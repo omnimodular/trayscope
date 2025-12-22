@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Trayscope
+Comment=System tray application for managing gamescope
+Exec=trayscope
+Icon=applications-games
+Terminal=false
+Categories=Game;Utility;
+Keywords=gamescope;steam;gaming;compositor;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
