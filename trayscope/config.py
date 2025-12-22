@@ -28,7 +28,11 @@ class GamescopeSettings:
     hdr_enabled: bool = False
     adaptive_sync: bool = False
 
-    # Custom
+    # Custom command (e.g., "flatpak run sh.ironforge.gamescope")
+    # If empty, uses system gamescope binary
+    gamescope_command: str = ""
+
+    # Extra args (appended to gamescope command)
     extra_args: str = ""
 
     # Auto-restart on crash
@@ -112,7 +116,13 @@ class Config:
     def build_gamescope_args(self, command: Optional[list[str]] = None) -> list[str]:
         """Build gamescope command-line arguments from settings."""
         s = self.settings
-        args = [self.get_gamescope_path()]
+
+        # Use custom command if specified, otherwise find gamescope binary
+        if s.gamescope_command.strip():
+            # Split custom command (e.g., "flatpak run sh.ironforge.gamescope")
+            args = s.gamescope_command.strip().split()
+        else:
+            args = [self.get_gamescope_path()]
 
         args.extend([f"--backend={s.backend}"])
 
@@ -153,7 +163,8 @@ class Config:
         if command:
             args.extend(command)
         else:
-            # Default: sleep infinity
+            # Default: export DISPLAY to D-Bus and sleep
+            # This lets other apps find the nested X server
             args.extend(["sh", "-c", "dbus-update-activation-environment DISPLAY; exec sleep infinity"])
 
         return args

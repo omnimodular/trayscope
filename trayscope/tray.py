@@ -8,21 +8,42 @@ from dbus_next.service import ServiceInterface, method, dbus_property, signal, P
 from dbus_next import Variant, BusType
 
 
-def _make_icon_pixmap():
-    """Create a simple 22x22 ARGB icon (green rounded square)."""
+def _make_crosshair_pixmap(active: bool):
+    """Create a 22x22 ARGB crosshair icon. Green if active, red if inactive."""
     size = 22
+    cx, cy = size // 2, size // 2
     pixels = []
+
+    # Colors: green for active, red for inactive
+    if active:
+        color = (0x33, 0xFF, 0x55)  # Bright green
+        glow = (0x00, 0xAA, 0x22)   # Darker green
+    else:
+        color = (0xFF, 0x33, 0x33)  # Bright red
+        glow = (0xAA, 0x00, 0x00)   # Darker red
+
     for y in range(size):
         for x in range(size):
-            cx, cy = size // 2, size // 2
             dx, dy = abs(x - cx), abs(y - cy)
+            dist = (dx * dx + dy * dy) ** 0.5
 
-            if dx <= 7 and dy <= 7 and (dx + dy) <= 12:
-                # Green
-                a, r, g, b = 0xFF, 0x00, 0xAA, 0x00
-            elif dx <= 8 and dy <= 8 and (dx + dy) <= 14:
-                # Border
-                a, r, g, b = 0xFF, 0x00, 0x77, 0x00
+            # Lens background (dark circle)
+            if dist <= 9:
+                # Crosshair lines (vertical and horizontal through center)
+                if (x == cx and dy <= 8) or (y == cy and dx <= 8):
+                    a, r, g, b = 0xFF, *color
+                # Center dot
+                elif dist <= 1.5:
+                    a, r, g, b = 0xFF, *color
+                # Tick marks on crosshair
+                elif (x == cx and dy in [3, 5, 7]) or (y == cy and dx in [3, 5, 7]):
+                    a, r, g, b = 0xFF, *color
+                # Dark lens interior
+                else:
+                    a, r, g, b = 0xDD, 0x1a, 0x1f, 0x24
+            # Lens ring
+            elif dist <= 10:
+                a, r, g, b = 0xFF, 0x3c, 0x48, 0x52
             else:
                 a, r, g, b = 0x00, 0x00, 0x00, 0x00
 
@@ -31,7 +52,8 @@ def _make_icon_pixmap():
     return [size, size, bytes(pixels)]
 
 
-ICON_PIXMAP = _make_icon_pixmap()
+ICON_ACTIVE = _make_crosshair_pixmap(True)
+ICON_INACTIVE = _make_crosshair_pixmap(False)
 
 
 class StatusNotifierItemInterface(ServiceInterface):
@@ -41,6 +63,8 @@ class StatusNotifierItemInterface(ServiceInterface):
         super().__init__("org.kde.StatusNotifierItem")
         self._service = service
         self._status = "Active"  # Always Active so icon is visible
+        self._gamescope_running = False  # Track gamescope state for icon
+        self._icon_name = "trayscope-inactive"
 
     @dbus_property(access=PropertyAccess.READ)
     def Category(self) -> "s":
@@ -60,11 +84,12 @@ class StatusNotifierItemInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def IconName(self) -> "s":
-        return "trayscope"
+        return self._icon_name
 
     @dbus_property(access=PropertyAccess.READ)
     def IconPixmap(self) -> "a(iiay)":
-        return [ICON_PIXMAP]  # Fallback if icon name not found
+        # Return green crosshair if running, red if not
+        return [ICON_ACTIVE if self._gamescope_running else ICON_INACTIVE]
 
     @dbus_property(access=PropertyAccess.READ)
     def OverlayIconName(self) -> "s":
@@ -149,6 +174,12 @@ class StatusNotifierItemInterface(ServiceInterface):
     def update_status(self, status: str):
         self._status = status
         self.NewStatus()
+
+    def set_gamescope_running(self, running: bool):
+        """Update icon based on gamescope state."""
+        self._gamescope_running = running
+        self._icon_name = "trayscope-active" if running else "trayscope-inactive"
+        self.NewIcon()
 
 
 class DBusMenuInterface(ServiceInterface):
@@ -384,6 +415,7 @@ class StatusNotifierService:
         self._menu_items[1] = ("Start Gamescope", self._do_start, not is_running, None, None, None)
         self._menu_items[2] = ("Stop Gamescope", self._do_stop, is_running, None, None, None)
         self._sni_interface.update_status(status)
+        self._sni_interface.set_gamescope_running(is_running)
         self._menu_interface.notify_layout_update()
 
     def _handle_click(self, item_id: int):
