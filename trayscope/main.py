@@ -1,147 +1,110 @@
 #!/usr/bin/env python3
-"""Trayscope - System tray application for gamescope management."""
+"""Trayscope - System tray application for gamescope management.
 
-import sys
+Uses dbus-next for StatusNotifier protocol (pure Python, no GTK).
+"""
+
+import asyncio
 import signal
-
-import gi
-gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib, Gio
+import sys
 
 from trayscope.config import Config
-from trayscope.settings import SettingsDialog
-from trayscope.log_viewer import LogViewer
-from trayscope.gamescope import GamescopeManager
-from trayscope.status_notifier import StatusNotifierItem
+from trayscope.tray import StatusNotifierService
+from trayscope.process import GamescopeProcess
 
 
-class TrayscopeApp(Gtk.Application):
+class Trayscope:
     """Main application class."""
 
     def __init__(self):
-        super().__init__(
-            application_id='sh.ironforge.trayscope',
-            flags=Gio.ApplicationFlags.FLAGS_NONE
-        )
-        self.config = None
-        self.gamescope = None
-        self.status_notifier = None
-        self.settings_dialog = None
-        self.log_viewer = None
-        self.hold_count = 0
-
-    def do_activate(self):
-        """Called when the application is activated."""
-        # Keep app running without a window
-        if self.hold_count == 0:
-            self.hold()
-            self.hold_count += 1
-
-    def do_startup(self):
-        """Called when the application starts."""
-        Gtk.Application.do_startup(self)
-
         self.config = Config()
-        self.gamescope = GamescopeManager(self.config)
+        self.process = GamescopeProcess(self.config)
+        self.tray = None
+        self._running = True
 
-        # Connect gamescope signals
-        self.gamescope.connect('started', self._on_gamescope_started)
-        self.gamescope.connect('stopped', self._on_gamescope_stopped)
-        self.gamescope.connect('log-output', self._on_log_output)
-
-        # Create status notifier (system tray)
-        self.status_notifier = StatusNotifierItem(
-            on_start=self._on_start,
-            on_stop=self._on_stop,
-            on_settings=self._on_settings,
-            on_logs=self._on_logs,
-            on_quit=self._on_quit
+    async def run(self):
+        """Run the application."""
+        # Create and register tray
+        self.tray = StatusNotifierService(
+            on_start=self.start_gamescope,
+            on_stop=self.stop_gamescope,
+            on_quit=self.quit
         )
-        self.status_notifier.register()
 
-    def _on_start(self):
+        # Connect process signals
+        self.process.on_started = self._on_started
+        self.process.on_stopped = self._on_stopped
+        self.process.on_output = self._on_output
+
+        await self.tray.connect()
+
+        print("Trayscope running. Use system tray to control gamescope.")
+
+        # Wait until quit
+        while self._running:
+            await asyncio.sleep(0.1)
+
+        await self.cleanup()
+
+    def start_gamescope(self):
         """Start gamescope."""
-        self.gamescope.start()
+        if not self.process.is_running:
+            asyncio.create_task(self.process.start())
 
-    def _on_stop(self):
+    def stop_gamescope(self):
         """Stop gamescope."""
-        self.gamescope.stop()
+        if self.process.is_running:
+            asyncio.create_task(self.process.stop())
 
-    def _on_settings(self):
-        """Open settings dialog."""
-        if self.settings_dialog is None:
-            self.settings_dialog = SettingsDialog(self.config)
-            self.settings_dialog.connect('destroy', self._on_settings_closed)
-        self.settings_dialog.present()
-
-    def _on_settings_closed(self, dialog):
-        """Handle settings dialog closed."""
-        self.settings_dialog = None
-
-    def _on_logs(self):
-        """Open log viewer."""
-        if self.log_viewer is None:
-            self.log_viewer = LogViewer()
-            self.log_viewer.connect('destroy', self._on_logs_closed)
-            # Add existing logs
-            for line in self.gamescope.get_log_buffer():
-                self.log_viewer.append_log(line)
-        self.log_viewer.present()
-
-    def _on_logs_closed(self, viewer):
-        """Handle log viewer closed."""
-        self.log_viewer = None
-
-    def _on_quit(self):
+    def quit(self):
         """Quit the application."""
-        if self.gamescope.is_running():
-            dialog = Gtk.MessageDialog(
-                transient_for=None,
-                modal=True,
-                message_type=Gtk.MessageType.QUESTION,
-                buttons=Gtk.ButtonsType.YES_NO,
-                text="Gamescope is still running"
-            )
-            dialog.format_secondary_text("Stop it before quitting?")
-            response = dialog.run()
-            dialog.destroy()
-            if response == Gtk.ResponseType.YES:
-                self.gamescope.stop()
+        self._running = False
 
-        self.status_notifier.unregister()
-        self.quit()
-
-    def _on_gamescope_started(self, manager):
+    def _on_started(self):
         """Handle gamescope started."""
-        self.status_notifier.set_status('active')
-        self._notify("Gamescope started")
+        if self.tray:
+            asyncio.create_task(self.tray.set_status("Active"))
 
-    def _on_gamescope_stopped(self, manager, exit_code):
+    def _on_stopped(self, exit_code: int):
         """Handle gamescope stopped."""
-        self.status_notifier.set_status('passive')
-        if exit_code != 0:
-            self._notify(f"Gamescope exited with code {exit_code}")
+        if self.tray:
+            asyncio.create_task(self.tray.set_status("Passive"))
+        if exit_code != 0 and self.config.settings.auto_restart and self._running:
+            print(f"Gamescope crashed (exit {exit_code}), restarting in 1s...")
+            asyncio.get_event_loop().call_later(1.0, self.start_gamescope)
 
-    def _on_log_output(self, manager, text):
-        """Handle log output."""
-        if self.log_viewer is not None:
-            self.log_viewer.append_log(text)
+    def _on_output(self, line: str):
+        """Handle gamescope output."""
+        print(f"[gamescope] {line}", end="")
 
-    def _notify(self, message):
-        """Send a desktop notification."""
-        notification = Gio.Notification.new("Trayscope")
-        notification.set_body(message)
-        self.send_notification(None, notification)
+    async def cleanup(self):
+        """Clean up resources."""
+        if self.process.is_running:
+            await self.process.stop()
+        if self.tray:
+            await self.tray.disconnect()
 
 
 def main():
     """Entry point."""
-    # Handle SIGINT gracefully
-    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, lambda: Gtk.main_quit())
+    app = Trayscope()
 
-    app = TrayscopeApp()
-    sys.exit(app.run(sys.argv))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Handle SIGINT/SIGTERM
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, app.quit)
+
+    try:
+        loop.run_until_complete(app.run())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.close()
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

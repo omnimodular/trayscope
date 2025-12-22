@@ -2,48 +2,23 @@
 
 A system tray application for managing [gamescope](https://github.com/ValveSoftware/gamescope), the SteamOS session compositing window manager.
 
-Uses GTK3 and StatusNotifier D-Bus protocol for native Wayland support with waybar and other StatusNotifier-compatible bars.
+Uses StatusNotifier D-Bus protocol for native Wayland support with waybar and other StatusNotifier-compatible bars.
 
 ## Features
 
 - **System tray integration**: Start/stop gamescope from your desktop's system tray (waybar, KDE, etc.)
-- **Settings UI**: Configure all gamescope options through a graphical interface
-  - Render and output resolution
-  - Refresh rate and upscale filter (FSR, nearest, linear)
-  - HDR, VRR (Adaptive Sync), fullscreen mode
-  - Backend (Wayland/X11), cursor grab
-  - Custom command-line arguments
-- **Log viewer**: Real-time view of gamescope output with copy/save/clear
+- **Pure Python**: No GTK/Qt dependencies, just D-Bus
 - **Auto-restart**: Optionally restart gamescope on crash
+- **Configurable**: Edit `~/.config/trayscope/config.json` to customize gamescope options
 
 ## Installation
 
-### System dependencies
-
-Trayscope requires GTK3 and PyGObject:
-
 ```sh
-# Arch Linux
-pacman -S python-gobject gtk3
-
-# Debian/Ubuntu
-apt install python3-gi gir1.2-gtk-3.0
-
-# Fedora
-dnf install python3-gobject gtk3
-```
-
-### From source
-
-```sh
-git clone https://github.com/omnimodular/trayscope.git
-cd trayscope
+pip install dbus-next
 pip install .
 ```
 
 ## Usage
-
-Run from the command line:
 
 ```sh
 trayscope
@@ -53,13 +28,32 @@ The app will appear in your system tray (waybar tray module, KDE system tray, et
 
 ## Configuration
 
-Settings are saved to `~/.config/trayscope/config.json`.
+Settings are saved to `~/.config/trayscope/config.json`:
+
+```json
+{
+  "render_width": 1920,
+  "render_height": 1080,
+  "output_width": 0,
+  "output_height": 0,
+  "refresh_rate": 60,
+  "filter": "fsr",
+  "fullscreen": true,
+  "backend": "wayland",
+  "force_grab_cursor": true,
+  "hdr_enabled": false,
+  "adaptive_sync": false,
+  "extra_args": "",
+  "auto_restart": true
+}
+```
+
+Set `output_width`/`output_height` to 0 for native resolution.
 
 ## Requirements
 
 - Python 3.10+
-- GTK3
-- PyGObject
+- dbus-next
 - A StatusNotifier-compatible system tray (waybar, KDE Plasma, GNOME with AppIndicator extension)
 - gamescope (must be installed separately)
 

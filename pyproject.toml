@@ -24,9 +24,9 @@ classifiers = [
     "Topic :: Games/Entertainment",
     "Topic :: Desktop Environment",
 ]
-keywords = ["gamescope", "steam", "gaming", "wayland", "compositor", "gtk"]
+keywords = ["gamescope", "steam", "gaming", "wayland", "compositor", "tray"]
 dependencies = [
-    "PyGObject>=3.42.0",
+    "dbus-next>=0.2.3",
 ]
 
 [project.urls]
