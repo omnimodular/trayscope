@@ -40,7 +40,7 @@ class StatusNotifierItemInterface(ServiceInterface):
     def __init__(self, service: "StatusNotifierService"):
         super().__init__("org.kde.StatusNotifierItem")
         self._service = service
-        self._status = "Active"  # Start as Active like Telegram
+        self._status = "Active"  # Always Active so icon is visible
 
     @dbus_property(access=PropertyAccess.READ)
     def Category(self) -> "s":
@@ -60,7 +60,7 @@ class StatusNotifierItemInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def IconName(self) -> "s":
-        return "trayscope"  # Uses installed SVG icon
+        return "trayscope"
 
     @dbus_property(access=PropertyAccess.READ)
     def IconPixmap(self) -> "a(iiay)":
@@ -315,6 +315,13 @@ class StatusNotifierService:
         hdr_on = s.hdr_enabled if s else False
         vrr_on = s.adaptive_sync if s else False
 
+        # Use visual markers since waybar may not render toggle indicators
+        def mark(label, selected):
+            return f"● {label}" if selected else f"○ {label}"
+
+        def check(label, on):
+            return f"✓ {label}" if on else f"  {label}"
+
         # Format: (label, callback, enabled, toggle_type, toggle_state, children)
         self._menu_items = {
             1: ("Start Gamescope", self._do_start, True, None, None, None),
@@ -322,19 +329,19 @@ class StatusNotifierService:
             3: ("separator", None, True, None, None, None),
             # Resolution submenu
             10: ("Resolution", None, True, None, None, [11, 12, 13, 14]),
-            11: ("720p", lambda: self._set_resolution(1280, 720), True, "radio", cur_res == (1280, 720), None),
-            12: ("1080p", lambda: self._set_resolution(1920, 1080), True, "radio", cur_res == (1920, 1080), None),
-            13: ("1440p", lambda: self._set_resolution(2560, 1440), True, "radio", cur_res == (2560, 1440), None),
-            14: ("4K", lambda: self._set_resolution(3840, 2160), True, "radio", cur_res == (3840, 2160), None),
+            11: (mark("720p", cur_res == (1280, 720)), lambda: self._set_resolution(1280, 720), True, "radio", cur_res == (1280, 720), None),
+            12: (mark("1080p", cur_res == (1920, 1080)), lambda: self._set_resolution(1920, 1080), True, "radio", cur_res == (1920, 1080), None),
+            13: (mark("1440p", cur_res == (2560, 1440)), lambda: self._set_resolution(2560, 1440), True, "radio", cur_res == (2560, 1440), None),
+            14: (mark("4K", cur_res == (3840, 2160)), lambda: self._set_resolution(3840, 2160), True, "radio", cur_res == (3840, 2160), None),
             # Filter submenu
             20: ("Filter", None, True, None, None, [21, 22, 23]),
-            21: ("FSR", lambda: self._set_filter("fsr"), True, "radio", cur_filter == "fsr", None),
-            22: ("Nearest", lambda: self._set_filter("nearest"), True, "radio", cur_filter == "nearest", None),
-            23: ("Linear", lambda: self._set_filter("linear"), True, "radio", cur_filter == "linear", None),
+            21: (mark("FSR", cur_filter == "fsr"), lambda: self._set_filter("fsr"), True, "radio", cur_filter == "fsr", None),
+            22: (mark("Nearest", cur_filter == "nearest"), lambda: self._set_filter("nearest"), True, "radio", cur_filter == "nearest", None),
+            23: (mark("Linear", cur_filter == "linear"), lambda: self._set_filter("linear"), True, "radio", cur_filter == "linear", None),
             # Toggles
             30: ("separator", None, True, None, None, None),
-            31: ("HDR", self._toggle_hdr, True, "checkmark", hdr_on, None),
-            32: ("VRR", self._toggle_vrr, True, "checkmark", vrr_on, None),
+            31: (check("HDR", hdr_on), self._toggle_hdr, True, "checkmark", hdr_on, None),
+            32: (check("VRR", vrr_on), self._toggle_vrr, True, "checkmark", vrr_on, None),
             # Quit
             40: ("separator", None, True, None, None, None),
             41: ("Quit", self._do_quit, True, None, None, None),
