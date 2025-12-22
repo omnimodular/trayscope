@@ -60,11 +60,11 @@ class StatusNotifierItemInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def IconName(self) -> "s":
-        return ""
+        return "trayscope"  # Uses installed SVG icon
 
     @dbus_property(access=PropertyAccess.READ)
     def IconPixmap(self) -> "a(iiay)":
-        return [ICON_PIXMAP]
+        return [ICON_PIXMAP]  # Fallback if icon name not found
 
     @dbus_property(access=PropertyAccess.READ)
     def OverlayIconName(self) -> "s":
@@ -233,7 +233,16 @@ class DBusMenuInterface(ServiceInterface):
                     children.append(Variant("(ia{sv}av)", child))
             return [0, {"children-display": Variant("s", "submenu")}, children]
         else:
-            return [parent_id, self._get_item_props(parent_id), []]
+            item = self._service._menu_items.get(parent_id)
+            props = self._get_item_props(parent_id)
+            children = []
+            # Check for submenu children (6th element)
+            if item and len(item) > 5 and item[5]:
+                if depth != 0:
+                    for child_id in item[5]:
+                        child = self._build_layout(child_id, depth - 1 if depth > 0 else -1)
+                        children.append(Variant("(ia{sv}av)", child))
+            return [parent_id, props, children]
 
     def _get_item_props(self, item_id: int) -> dict:
         items = self._service._menu_items
@@ -241,17 +250,32 @@ class DBusMenuInterface(ServiceInterface):
             return {}
 
         item = items[item_id]
+        # Format: (label, callback, enabled, toggle_type, toggle_state, children)
         label = item[0]
         enabled = item[2] if len(item) > 2 else True
+        toggle_type = item[3] if len(item) > 3 else None
+        toggle_state = item[4] if len(item) > 4 else None
+        children = item[5] if len(item) > 5 else None
 
         if label == "separator":
             return {"type": Variant("s", "separator")}
 
-        return {
+        props = {
             "label": Variant("s", label),
             "enabled": Variant("b", enabled),
             "visible": Variant("b", True),
         }
+
+        # Submenu indicator
+        if children:
+            props["children-display"] = Variant("s", "submenu")
+
+        # Toggle type and state
+        if toggle_type:
+            props["toggle-type"] = Variant("s", toggle_type)
+            props["toggle-state"] = Variant("i", 1 if toggle_state else 0)
+
+        return props
 
     def notify_layout_update(self):
         self._revision += 1
@@ -284,29 +308,38 @@ class StatusNotifierService:
         self._rebuild_menu()
 
     def _rebuild_menu(self):
-        """Build the menu structure - flat menu, no submenus."""
+        """Build menu with submenus for grouping."""
+        s = self._config.settings if hasattr(self, '_config') and self._config else None
+        cur_res = (s.render_width, s.render_height) if s else (1920, 1080)
+        cur_filter = s.filter if s else "fsr"
+        hdr_on = s.hdr_enabled if s else False
+        vrr_on = s.adaptive_sync if s else False
+
+        # Format: (label, callback, enabled, toggle_type, toggle_state, children)
         self._menu_items = {
-            1: ("Start Gamescope", self._do_start, True),
-            2: ("Stop Gamescope", self._do_stop, False),
-            3: ("separator", None, True),
-            # Resolution options
-            11: ("720p", lambda: self._set_resolution(1280, 720), True),
-            12: ("1080p", lambda: self._set_resolution(1920, 1080), True),
-            13: ("1440p", lambda: self._set_resolution(2560, 1440), True),
-            # Filter options
-            20: ("separator", None, True),
-            21: ("Filter: FSR", lambda: self._set_filter("fsr"), True),
-            22: ("Filter: Nearest", lambda: self._set_filter("nearest"), True),
-            23: ("Filter: Linear", lambda: self._set_filter("linear"), True),
+            1: ("Start Gamescope", self._do_start, True, None, None, None),
+            2: ("Stop Gamescope", self._do_stop, False, None, None, None),
+            3: ("separator", None, True, None, None, None),
+            # Resolution submenu
+            10: ("Resolution", None, True, None, None, [11, 12, 13, 14]),
+            11: ("720p", lambda: self._set_resolution(1280, 720), True, "radio", cur_res == (1280, 720), None),
+            12: ("1080p", lambda: self._set_resolution(1920, 1080), True, "radio", cur_res == (1920, 1080), None),
+            13: ("1440p", lambda: self._set_resolution(2560, 1440), True, "radio", cur_res == (2560, 1440), None),
+            14: ("4K", lambda: self._set_resolution(3840, 2160), True, "radio", cur_res == (3840, 2160), None),
+            # Filter submenu
+            20: ("Filter", None, True, None, None, [21, 22, 23]),
+            21: ("FSR", lambda: self._set_filter("fsr"), True, "radio", cur_filter == "fsr", None),
+            22: ("Nearest", lambda: self._set_filter("nearest"), True, "radio", cur_filter == "nearest", None),
+            23: ("Linear", lambda: self._set_filter("linear"), True, "radio", cur_filter == "linear", None),
             # Toggles
-            30: ("separator", None, True),
-            31: ("Toggle HDR", self._toggle_hdr, True),
-            32: ("Toggle VRR", self._toggle_vrr, True),
+            30: ("separator", None, True, None, None, None),
+            31: ("HDR", self._toggle_hdr, True, "checkmark", hdr_on, None),
+            32: ("VRR", self._toggle_vrr, True, "checkmark", vrr_on, None),
             # Quit
-            40: ("separator", None, True),
-            41: ("Quit", self._do_quit, True),
+            40: ("separator", None, True, None, None, None),
+            41: ("Quit", self._do_quit, True, None, None, None),
         }
-        self._root_items = [1, 2, 3, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 40, 41]
+        self._root_items = [1, 2, 3, 10, 20, 30, 31, 32, 40, 41]
 
     async def connect(self):
         """Connect to D-Bus and register interfaces."""
@@ -341,15 +374,16 @@ class StatusNotifierService:
 
     async def set_status(self, status: str):
         is_running = status == "Active"
-        self._menu_items[1] = ("Start Gamescope", self._do_start, not is_running)
-        self._menu_items[2] = ("Stop Gamescope", self._do_stop, is_running)
+        self._menu_items[1] = ("Start Gamescope", self._do_start, not is_running, None, None, None)
+        self._menu_items[2] = ("Stop Gamescope", self._do_stop, is_running, None, None, None)
         self._sni_interface.update_status(status)
         self._menu_interface.notify_layout_update()
 
     def _handle_click(self, item_id: int):
         print(f"Menu click: item {item_id}")
         if item_id in self._menu_items:
-            label, callback, enabled = self._menu_items[item_id]
+            item = self._menu_items[item_id]
+            label, callback, enabled = item[0], item[1], item[2]
             if callback and enabled:
                 callback()
 
@@ -378,27 +412,29 @@ class StatusNotifierService:
             self._config.settings.render_width = width
             self._config.settings.render_height = height
             self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
 
     def _set_filter(self, filter_name: str):
         print(f"Setting filter: {filter_name}")
         if hasattr(self, '_config') and self._config:
             self._config.settings.filter = filter_name
             self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
 
     def _toggle_hdr(self):
         if hasattr(self, '_config') and self._config:
             self._config.settings.hdr_enabled = not self._config.settings.hdr_enabled
             print(f"HDR: {self._config.settings.hdr_enabled}")
             self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
 
     def _toggle_vrr(self):
         if hasattr(self, '_config') and self._config:
             self._config.settings.adaptive_sync = not self._config.settings.adaptive_sync
             print(f"VRR: {self._config.settings.adaptive_sync}")
             self._config.save()
-
-    def _toggle_auto_restart(self):
-        if hasattr(self, '_config') and self._config:
-            self._config.settings.auto_restart = not self._config.settings.auto_restart
-            print(f"Auto-restart: {self._config.settings.auto_restart}")
-            self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()

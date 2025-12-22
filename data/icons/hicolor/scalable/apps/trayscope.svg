@@ -1,0 +1,41 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="metalGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#5e6a75"/>
+            <stop offset="50%" stop-color="#3c4852"/>
+            <stop offset="100%" stop-color="#232a30"/>
+        </linearGradient>
+        <radialGradient id="lensGrad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+            <stop offset="0%" stop-color="#2a3138" />
+            <stop offset="90%" stop-color="#0a0d10" />
+        </radialGradient>
+        <filter id="redGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+            <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 18 -7" result="goo" />
+            <feBlend in="SourceGraphic" in2="goo" />
+        </filter>
+    </defs>
+
+    <rect x="32" y="32" width="448" height="448" rx="110" fill="url(#metalGrad)"/>
+    <rect x="32" y="32" width="448" height="448" rx="110" stroke="#111518" stroke-width="8" opacity="0.5"/>
+    
+    <circle cx="256" cy="256" r="170" fill="url(#lensGrad)"/>
+    <circle cx="256" cy="256" r="170" stroke="#1a1f24" stroke-width="16"/>
+    
+    <g stroke="#ff3333" stroke-width="4" fill="#ff3333" filter="url(#redGlow)">
+        <line x1="256" y1="86" x2="256" y2="426" />
+        <line x1="86" y1="256" x2="426" y2="256" />
+        
+        <circle cx="256" cy="256" r="6" stroke="none"/>
+        
+        <circle cx="256" cy="206" r="4" stroke="none"/>
+        <circle cx="256" cy="156" r="4" stroke="none"/>
+        <circle cx="256" cy="306" r="4" stroke="none"/>
+        <circle cx="256" cy="356" r="4" stroke="none"/>
+        
+        <circle cx="206" cy="256" r="4" stroke="none"/>
+        <circle cx="156" cy="256" r="4" stroke="none"/>
+        <circle cx="306" cy="256" r="4" stroke="none"/>
+        <circle cx="356" cy="256" r="4" stroke="none"/>
+    </g>
+</svg>
