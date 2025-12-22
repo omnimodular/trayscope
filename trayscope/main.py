@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Trayscope - System tray application for gamescope management.
-
-Uses dbus-next for StatusNotifier protocol (pure Python, no GTK).
-"""
+"""Trayscope - System tray for gamescope."""
 
 import asyncio
 import signal
@@ -14,8 +11,6 @@ from trayscope.process import GamescopeProcess
 
 
 class Trayscope:
-    """Main application class."""
-
     def __init__(self):
         self.config = Config()
         self.process = GamescopeProcess(self.config)
@@ -23,62 +18,51 @@ class Trayscope:
         self._running = True
 
     async def run(self):
-        """Run the application."""
-        # Create and register tray
         self.tray = StatusNotifierService(
             on_start=self.start_gamescope,
             on_stop=self.stop_gamescope,
             on_quit=self.quit
         )
 
-        # Connect process signals
         self.process.on_started = self._on_started
         self.process.on_stopped = self._on_stopped
         self.process.on_output = self._on_output
 
+        self.tray.set_config(self.config)
         await self.tray.connect()
+        print("Trayscope running.")
 
-        print("Trayscope running. Use system tray to control gamescope.")
-
-        # Wait until quit
         while self._running:
             await asyncio.sleep(0.1)
 
         await self.cleanup()
 
     def start_gamescope(self):
-        """Start gamescope."""
         if not self.process.is_running:
             asyncio.create_task(self.process.start())
 
     def stop_gamescope(self):
-        """Stop gamescope."""
         if self.process.is_running:
             asyncio.create_task(self.process.stop())
 
     def quit(self):
-        """Quit the application."""
         self._running = False
 
     def _on_started(self):
-        """Handle gamescope started."""
         if self.tray:
             asyncio.create_task(self.tray.set_status("Active"))
 
     def _on_stopped(self, exit_code: int):
-        """Handle gamescope stopped."""
         if self.tray:
             asyncio.create_task(self.tray.set_status("Passive"))
         if exit_code != 0 and self.config.settings.auto_restart and self._running:
-            print(f"Gamescope crashed (exit {exit_code}), restarting in 1s...")
+            print(f"Crashed (exit {exit_code}), restarting...")
             asyncio.get_event_loop().call_later(1.0, self.start_gamescope)
 
     def _on_output(self, line: str):
-        """Handle gamescope output."""
-        print(f"[gamescope] {line}", end="")
+        print(f"[gs] {line}", end="")
 
     async def cleanup(self):
-        """Clean up resources."""
         if self.process.is_running:
             await self.process.stop()
         if self.tray:
@@ -86,13 +70,10 @@ class Trayscope:
 
 
 def main():
-    """Entry point."""
     app = Trayscope()
-
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    # Handle SIGINT/SIGTERM
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, app.quit)
 
@@ -102,7 +83,6 @@ def main():
         pass
     finally:
         loop.close()
-
     return 0
 
 

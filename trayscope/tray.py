@@ -1,4 +1,4 @@
-"""StatusNotifier D-Bus implementation using dbus-next (pure Python)."""
+"""StatusNotifier D-Bus implementation using dbus-next."""
 
 import os
 from typing import Callable, Optional
@@ -9,7 +9,7 @@ from dbus_next import Variant, BusType
 
 
 def _make_icon_pixmap():
-    """Create a simple 22x22 ARGB icon (green square)."""
+    """Create a simple 22x22 ARGB icon (green rounded square)."""
     size = 22
     pixels = []
     for y in range(size):
@@ -17,22 +17,20 @@ def _make_icon_pixmap():
             cx, cy = size // 2, size // 2
             dx, dy = abs(x - cx), abs(y - cy)
 
-            if dx <= 7 and dy <= 5:
-                # Green: ARGB format (each pixel is 4 bytes)
+            if dx <= 7 and dy <= 7 and (dx + dy) <= 12:
+                # Green
                 a, r, g, b = 0xFF, 0x00, 0xAA, 0x00
-            elif dx <= 8 and dy <= 6:
+            elif dx <= 8 and dy <= 8 and (dx + dy) <= 14:
                 # Border
                 a, r, g, b = 0xFF, 0x00, 0x77, 0x00
             else:
                 a, r, g, b = 0x00, 0x00, 0x00, 0x00
 
-            # ARGB in network byte order (big-endian)
             pixels.extend([a, r, g, b])
 
-    return (size, size, bytes(pixels))
+    return [size, size, bytes(pixels)]
 
 
-# Pre-generate icon
 ICON_PIXMAP = _make_icon_pixmap()
 
 
@@ -42,7 +40,7 @@ class StatusNotifierItemInterface(ServiceInterface):
     def __init__(self, service: "StatusNotifierService"):
         super().__init__("org.kde.StatusNotifierItem")
         self._service = service
-        self._status = "Passive"
+        self._status = "Active"  # Start as Active like Telegram
 
     @dbus_property(access=PropertyAccess.READ)
     def Category(self) -> "s":
@@ -62,13 +60,19 @@ class StatusNotifierItemInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def IconName(self) -> "s":
-        return ""  # Empty - we use IconPixmap instead
+        return ""
 
     @dbus_property(access=PropertyAccess.READ)
     def IconPixmap(self) -> "a(iiay)":
-        # Array of [width, height, ARGB data] - must be lists for dbus-next
-        w, h, data = ICON_PIXMAP
-        return [[w, h, data]]
+        return [ICON_PIXMAP]
+
+    @dbus_property(access=PropertyAccess.READ)
+    def OverlayIconName(self) -> "s":
+        return ""
+
+    @dbus_property(access=PropertyAccess.READ)
+    def OverlayIconPixmap(self) -> "a(iiay)":
+        return []
 
     @dbus_property(access=PropertyAccess.READ)
     def AttentionIconName(self) -> "s":
@@ -76,8 +80,11 @@ class StatusNotifierItemInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def AttentionIconPixmap(self) -> "a(iiay)":
-        w, h, data = ICON_PIXMAP
-        return [[w, h, data]]
+        return []
+
+    @dbus_property(access=PropertyAccess.READ)
+    def AttentionMovieName(self) -> "s":
+        return ""
 
     @dbus_property(access=PropertyAccess.READ)
     def IconThemePath(self) -> "s":
@@ -89,27 +96,34 @@ class StatusNotifierItemInterface(ServiceInterface):
 
     @dbus_property(access=PropertyAccess.READ)
     def ItemIsMenu(self) -> "b":
-        return True
+        return False  # Like Telegram
 
     @dbus_property(access=PropertyAccess.READ)
     def ToolTip(self) -> "(sa(iiay)ss)":
-        # [icon_name, icon_data, title, description] - must be list for dbus-next
         return ["", [], "Trayscope", "Gamescope launcher"]
+
+    @dbus_property(access=PropertyAccess.READ)
+    def WindowId(self) -> "i":
+        return 0
 
     @method()
     def Activate(self, x: "i", y: "i"):
-        pass
+        print(f"Activate called at {x},{y}")
 
     @method()
     def SecondaryActivate(self, x: "i", y: "i"):
-        pass
+        print(f"SecondaryActivate called at {x},{y}")
 
     @method()
     def ContextMenu(self, x: "i", y: "i"):
-        pass
+        print(f"ContextMenu called at {x},{y}")
 
     @method()
     def Scroll(self, delta: "i", orientation: "s"):
+        pass
+
+    @method()
+    def ProvideXdgActivationToken(self, token: "s"):
         pass
 
     @signal()
@@ -124,8 +138,15 @@ class StatusNotifierItemInterface(ServiceInterface):
     def NewTitle(self) -> "":
         return None
 
+    @signal()
+    def NewToolTip(self) -> "":
+        return None
+
+    @signal()
+    def NewMenu(self) -> "":
+        return None
+
     def update_status(self, status: str):
-        """Update status and emit signal."""
         self._status = status
         self.NewStatus()
 
@@ -171,22 +192,20 @@ class DBusMenuInterface(ServiceInterface):
     @method()
     def GetProperty(self, id_: "i", name: "s") -> "v":
         props = self._get_item_props(id_)
-        if name in props:
-            return props[name]
-        return Variant("s", "")
+        return props.get(name, Variant("s", ""))
 
     @method()
     def Event(self, id_: "i", event_id: "s", data: "v", timestamp: "u"):
+        print(f"Menu Event: id={id_}, event={event_id}")
         if event_id == "clicked":
             self._service._handle_click(id_)
 
     @method()
     def EventGroup(self, events: "a(isvu)") -> "ai":
-        errors = []
         for id_, event_id, data, timestamp in events:
             if event_id == "clicked":
                 self._service._handle_click(id_)
-        return errors
+        return []
 
     @method()
     def AboutToShow(self, id_: "i") -> "b":
@@ -205,29 +224,25 @@ class DBusMenuInterface(ServiceInterface):
         return [[], []]
 
     def _build_layout(self, parent_id: int, depth: int = -1):
-        """Build menu layout."""
         if parent_id == 0:
             # Root menu
             children = []
             if depth != 0:
-                for item_id in sorted(self._service._menu_items.keys()):
+                for item_id in self._service._root_items:
                     child = self._build_layout(item_id, depth - 1 if depth > 0 else -1)
                     children.append(Variant("(ia{sv}av)", child))
-            root_props = {
-                "children-display": Variant("s", "submenu"),
-            }
-            return [0, root_props, children]
+            return [0, {"children-display": Variant("s", "submenu")}, children]
         else:
-            props = self._get_item_props(parent_id)
-            return [parent_id, props, []]
+            return [parent_id, self._get_item_props(parent_id), []]
 
     def _get_item_props(self, item_id: int) -> dict:
-        """Get properties for a menu item."""
         items = self._service._menu_items
         if item_id not in items:
             return {}
 
-        label, _, enabled = items[item_id]
+        item = items[item_id]
+        label = item[0]
+        enabled = item[2] if len(item) > 2 else True
 
         if label == "separator":
             return {"type": Variant("s", "separator")}
@@ -239,7 +254,6 @@ class DBusMenuInterface(ServiceInterface):
         }
 
     def notify_layout_update(self):
-        """Increment revision and signal update."""
         self._revision += 1
         self.LayoutUpdated()
 
@@ -258,33 +272,54 @@ class StatusNotifierService:
         self.on_quit = on_quit
 
         self._bus: Optional[MessageBus] = None
-        self._bus_name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+        self._unique_name: str = ""
 
         self._sni_interface = StatusNotifierItemInterface(self)
         self._menu_interface = DBusMenuInterface(self)
 
-        # Menu items: id -> (label, callback, enabled)
+        # Menu structure
+        # id -> (label, callback, enabled, children_ids)
+        # children_ids is None for leaf items, list of ids for submenus
+        self._menu_items = {}
+        self._rebuild_menu()
+
+    def _rebuild_menu(self):
+        """Build the menu structure - flat menu, no submenus."""
         self._menu_items = {
             1: ("Start Gamescope", self._do_start, True),
             2: ("Stop Gamescope", self._do_stop, False),
             3: ("separator", None, True),
-            4: ("Quit", self._do_quit, True),
+            # Resolution options
+            11: ("720p", lambda: self._set_resolution(1280, 720), True),
+            12: ("1080p", lambda: self._set_resolution(1920, 1080), True),
+            13: ("1440p", lambda: self._set_resolution(2560, 1440), True),
+            # Filter options
+            20: ("separator", None, True),
+            21: ("Filter: FSR", lambda: self._set_filter("fsr"), True),
+            22: ("Filter: Nearest", lambda: self._set_filter("nearest"), True),
+            23: ("Filter: Linear", lambda: self._set_filter("linear"), True),
+            # Toggles
+            30: ("separator", None, True),
+            31: ("Toggle HDR", self._toggle_hdr, True),
+            32: ("Toggle VRR", self._toggle_vrr, True),
+            # Quit
+            40: ("separator", None, True),
+            41: ("Quit", self._do_quit, True),
         }
+        self._root_items = [1, 2, 3, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 40, 41]
 
     async def connect(self):
         """Connect to D-Bus and register interfaces."""
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        self._unique_name = self._bus.unique_name
 
         # Export interfaces
         self._bus.export("/StatusNotifierItem", self._sni_interface)
         self._bus.export("/MenuBar", self._menu_interface)
 
-        # Request bus name
-        await self._bus.request_name(self._bus_name)
+        print(f"D-Bus unique name: {self._unique_name}")
 
-        print(f"D-Bus name: {self._bus_name}")
-
-        # Register with StatusNotifierWatcher
+        # Register with StatusNotifierWatcher using unique name (like Telegram does)
         try:
             introspection = await self._bus.introspect(
                 self.WATCHER_BUS, self.WATCHER_PATH
@@ -293,36 +328,28 @@ class StatusNotifierService:
                 self.WATCHER_BUS, self.WATCHER_PATH, introspection
             )
             watcher = proxy.get_interface("org.kde.StatusNotifierWatcher")
-            await watcher.call_register_status_notifier_item(self._bus_name)
+            # Register with just the unique bus name - watcher adds the path
+            await watcher.call_register_status_notifier_item(self._unique_name)
             print("Registered with StatusNotifierWatcher")
         except Exception as e:
-            print(f"Warning: Could not register with StatusNotifierWatcher: {e}")
-            print("Is a StatusNotifier host (waybar, KDE, etc.) running?")
+            print(f"Warning: Could not register: {e}")
 
     async def disconnect(self):
-        """Disconnect from D-Bus."""
         if self._bus:
             self._bus.disconnect()
             self._bus = None
 
     async def set_status(self, status: str):
-        """Set tray icon status."""
         is_running = status == "Active"
-
-        # Update menu items
         self._menu_items[1] = ("Start Gamescope", self._do_start, not is_running)
         self._menu_items[2] = ("Stop Gamescope", self._do_stop, is_running)
-
-        # Update status and emit signals
         self._sni_interface.update_status(status)
         self._menu_interface.notify_layout_update()
 
     def _handle_click(self, item_id: int):
-        """Handle menu item click."""
         print(f"Menu click: item {item_id}")
         if item_id in self._menu_items:
             label, callback, enabled = self._menu_items[item_id]
-            print(f"  -> {label}, enabled={enabled}")
             if callback and enabled:
                 callback()
 
@@ -340,3 +367,38 @@ class StatusNotifierService:
         print("Action: Quit")
         if self.on_quit:
             self.on_quit()
+
+    def set_config(self, config):
+        """Set the config object for saving settings."""
+        self._config = config
+
+    def _set_resolution(self, width: int, height: int):
+        print(f"Setting resolution: {width}x{height}")
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.render_width = width
+            self._config.settings.render_height = height
+            self._config.save()
+
+    def _set_filter(self, filter_name: str):
+        print(f"Setting filter: {filter_name}")
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.filter = filter_name
+            self._config.save()
+
+    def _toggle_hdr(self):
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.hdr_enabled = not self._config.settings.hdr_enabled
+            print(f"HDR: {self._config.settings.hdr_enabled}")
+            self._config.save()
+
+    def _toggle_vrr(self):
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.adaptive_sync = not self._config.settings.adaptive_sync
+            print(f"VRR: {self._config.settings.adaptive_sync}")
+            self._config.save()
+
+    def _toggle_auto_restart(self):
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.auto_restart = not self._config.settings.auto_restart
+            print(f"Auto-restart: {self._config.settings.auto_restart}")
+            self._config.save()
