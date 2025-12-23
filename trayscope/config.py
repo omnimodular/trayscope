@@ -38,6 +38,9 @@ class GamescopeSettings:
     # Auto-restart on crash
     auto_restart: bool = True
 
+    # Command to run when gamescope becomes ready (empty = disabled)
+    autorun_command: str = ""
+
 
 class Config:
     """Configuration manager for loading/saving settings."""

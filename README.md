@@ -13,8 +13,9 @@ Uses StatusNotifier D-Bus protocol for native Wayland support with waybar and ot
 
 ## Installation
 
+`pip install .` installs Python dependencies (including `dbus-next`).
+
 ```sh
-pip install dbus-next
 pip install .
 ```
 
@@ -44,11 +45,14 @@ Settings are saved to `~/.config/trayscope/config.json`:
   "hdr_enabled": false,
   "adaptive_sync": false,
   "extra_args": "",
-  "auto_restart": true
+  "auto_restart": true,
+  "autorun_command": ""
 }
 ```
 
 Set `output_width`/`output_height` to 0 for native resolution.
+
+Set `autorun_command` to run a command when gamescope becomes ready (e.g., `"steam -gamepadui"`).
 
 ## Requirements
 
