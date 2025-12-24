@@ -45,7 +45,7 @@ class GamescopeSettings:
 class Config:
     """Configuration manager for loading/saving settings."""
 
-    CONFIG_DIR = Path.home() / ".config" / "trayscope"
+    CONFIG_DIR = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / "trayscope"
     CONFIG_FILE = CONFIG_DIR / "config.json"
 
     def __init__(self):
