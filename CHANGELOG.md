@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0] - 2025-12-24
+
+### Added
+- "Automatic" backend option as default (lets gamescope auto-detect)
+
+### Fixed
+- Autostart toggle losing gamescope running state
+- Autostart not showing correct state at launch
+
+### Changed
+- All settings disabled when gamescope is running
+
 ## [0.2.2] - 2025-12-24
 
 ### Changed
