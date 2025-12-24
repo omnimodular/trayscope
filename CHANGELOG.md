@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.2] - 2025-12-24
+
+### Changed
+- Include SVG icons in wheel package for simpler distribution
+
 ## [0.2.1] - 2025-01-24
 
 ### Added

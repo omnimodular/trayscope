@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trayscope"
-version = "0.2.1"
+version = "0.2.2"
 description = "System tray application for managing gamescope"
 readme = "README.md"
 license = "BSD-2-Clause"
@@ -40,3 +40,6 @@ trayscope = "trayscope.main:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["trayscope*"]
+
+[tool.setuptools.package-data]
+trayscope = ["icons/*.svg"]
