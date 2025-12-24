@@ -2,7 +2,6 @@
 """Trayscope - System tray for gamescope."""
 
 import asyncio
-import shlex
 import signal
 import sys
 
@@ -28,11 +27,14 @@ class Trayscope:
         self.process.on_started = self._on_started
         self.process.on_stopped = self._on_stopped
         self.process.on_output = self._on_output
-        self.process.on_ready = self._on_ready
 
         self.tray.set_config(self.config)
         await self.tray.connect()
         print("Trayscope running.")
+
+        if self.config.settings.autostart:
+            print("Autostart enabled, starting gamescope...")
+            self.start_gamescope()
 
         while self._running:
             await asyncio.sleep(0.1)
@@ -63,30 +65,6 @@ class Trayscope:
 
     def _on_output(self, line: str):
         print(f"[gs] {line}", end="")
-
-    def _on_ready(self):
-        """Called when gamescope is fully initialized."""
-        autorun = self.config.settings.autorun_command.strip()
-        if autorun:
-            print(f"Gamescope ready, running autorun: {autorun}")
-            asyncio.create_task(self._run_autorun(autorun))
-
-    async def _run_autorun(self, command: str):
-        """Run the autorun command."""
-        try:
-            # Use shell=True to support complex commands with pipes, etc.
-            proc = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT
-            )
-            stdout, _ = await proc.communicate()
-            if stdout:
-                print(f"[autorun] {stdout.decode('utf-8', errors='replace')}", end="")
-            if proc.returncode != 0:
-                print(f"[autorun] Exited with code {proc.returncode}")
-        except Exception as e:
-            print(f"[autorun] Failed: {e}")
 
     async def cleanup(self):
         if self.process.is_running:

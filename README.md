@@ -46,13 +46,13 @@ Settings are saved to `~/.config/trayscope/config.json`:
   "adaptive_sync": false,
   "extra_args": "",
   "auto_restart": true,
-  "autorun_command": ""
+  "autostart": false
 }
 ```
 
 Set `output_width`/`output_height` to 0 for native resolution.
 
-Set `autorun_command` to run a command when gamescope becomes ready (e.g., `"steam -gamepadui"`).
+Set `autostart` to `true` to automatically start gamescope when trayscope starts.
 
 ## Requirements
 
