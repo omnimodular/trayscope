@@ -59,9 +59,6 @@ class Trayscope:
     def _on_stopped(self, exit_code: int):
         if self.tray:
             asyncio.create_task(self.tray.set_gamescope_running(False))
-        if exit_code != 0 and self.config.settings.auto_restart and self._running:
-            print(f"Crashed (exit {exit_code}), restarting...")
-            asyncio.get_event_loop().call_later(1.0, self.start_gamescope)
 
     def _on_output(self, line: str):
         print(f"[gs] {line}", end="")

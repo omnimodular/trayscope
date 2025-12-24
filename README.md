@@ -8,8 +8,8 @@ Uses StatusNotifier D-Bus protocol for native Wayland support with waybar and ot
 
 - **System tray integration**: Start/stop gamescope from your desktop's system tray (waybar, KDE, etc.)
 - **Pure Python**: No GTK/Qt dependencies, just D-Bus
-- **Auto-restart**: Optionally restart gamescope on crash
-- **Configurable**: Edit `~/.config/trayscope/config.json` to customize gamescope options
+- **Tray menu controls**: Configure resolution, refresh rate, filter, backend, and toggles directly from the tray menu
+- **Configurable**: Settings saved to `~/.config/trayscope/config.json`
 
 ## Installation
 
@@ -44,15 +44,18 @@ Settings are saved to `~/.config/trayscope/config.json`:
   "force_grab_cursor": true,
   "hdr_enabled": false,
   "adaptive_sync": false,
+  "gamescope_command": "",
   "extra_args": "",
-  "auto_restart": true,
   "autostart": false
 }
 ```
 
-Set `output_width`/`output_height` to 0 for native resolution.
+Most settings can be changed via the tray menu. Additional notes:
 
-Set `autostart` to `true` to automatically start gamescope when trayscope starts.
+- `output_width`/`output_height`: Set to 0 for native resolution (config-only)
+- `gamescope_command`: Custom gamescope command, e.g. `flatpak run sh.ironforge.gamescope` (config-only)
+- `extra_args`: Additional gamescope arguments (config-only)
+- `autostart`: Start gamescope automatically when trayscope launches
 
 ## Requirements
 

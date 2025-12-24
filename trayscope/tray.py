@@ -339,8 +339,13 @@ class StatusNotifierService:
         s = self._config.settings if hasattr(self, '_config') and self._config else None
         cur_res = (s.render_width, s.render_height) if s else (1920, 1080)
         cur_filter = s.filter if s else "fsr"
+        cur_refresh = s.refresh_rate if s else 60
+        cur_backend = s.backend if s else "wayland"
         hdr_on = s.hdr_enabled if s else False
         vrr_on = s.adaptive_sync if s else False
+        fullscreen_on = s.fullscreen if s else True
+        grab_on = s.force_grab_cursor if s else True
+        autostart_on = s.autostart if s else False
 
         # Use visual markers since waybar may not render toggle indicators
         def mark(label, selected):
@@ -360,20 +365,32 @@ class StatusNotifierService:
             12: (mark("1080p", cur_res == (1920, 1080)), lambda: self._set_resolution(1920, 1080), True, "radio", cur_res == (1920, 1080), None),
             13: (mark("1440p", cur_res == (2560, 1440)), lambda: self._set_resolution(2560, 1440), True, "radio", cur_res == (2560, 1440), None),
             14: (mark("4K", cur_res == (3840, 2160)), lambda: self._set_resolution(3840, 2160), True, "radio", cur_res == (3840, 2160), None),
+            # Refresh Rate submenu
+            50: ("Refresh Rate", None, True, None, None, [51, 52, 53]),
+            51: (mark("60 Hz", cur_refresh == 60), lambda: self._set_refresh_rate(60), True, "radio", cur_refresh == 60, None),
+            52: (mark("120 Hz", cur_refresh == 120), lambda: self._set_refresh_rate(120), True, "radio", cur_refresh == 120, None),
+            53: (mark("144 Hz", cur_refresh == 144), lambda: self._set_refresh_rate(144), True, "radio", cur_refresh == 144, None),
             # Filter submenu
             20: ("Filter", None, True, None, None, [21, 22, 23]),
             21: (mark("FSR", cur_filter == "fsr"), lambda: self._set_filter("fsr"), True, "radio", cur_filter == "fsr", None),
             22: (mark("Nearest", cur_filter == "nearest"), lambda: self._set_filter("nearest"), True, "radio", cur_filter == "nearest", None),
             23: (mark("Linear", cur_filter == "linear"), lambda: self._set_filter("linear"), True, "radio", cur_filter == "linear", None),
+            # Backend submenu
+            60: ("Backend", None, True, None, None, [61, 62]),
+            61: (mark("Wayland", cur_backend == "wayland"), lambda: self._set_backend("wayland"), True, "radio", cur_backend == "wayland", None),
+            62: (mark("X11", cur_backend == "x11"), lambda: self._set_backend("x11"), True, "radio", cur_backend == "x11", None),
             # Toggles
             30: ("separator", None, True, None, None, None),
             31: (check("HDR", hdr_on), self._toggle_hdr, True, "checkmark", hdr_on, None),
             32: (check("VRR", vrr_on), self._toggle_vrr, True, "checkmark", vrr_on, None),
+            33: (check("Fullscreen", fullscreen_on), self._toggle_fullscreen, True, "checkmark", fullscreen_on, None),
+            34: (check("Grab Cursor", grab_on), self._toggle_grab_cursor, True, "checkmark", grab_on, None),
+            35: (check("Autostart", autostart_on), self._toggle_autostart, True, "checkmark", autostart_on, None),
             # Quit
             40: ("separator", None, True, None, None, None),
             41: ("Quit", self._do_quit, True, None, None, None),
         }
-        self._root_items = [1, 2, 3, 10, 20, 30, 31, 32, 40, 41]
+        self._root_items = [1, 2, 3, 10, 50, 20, 60, 30, 31, 32, 33, 34, 35, 40, 41]
 
     async def connect(self):
         """Connect to D-Bus and register interfaces."""
@@ -471,6 +488,46 @@ class StatusNotifierService:
         if hasattr(self, '_config') and self._config:
             self._config.settings.adaptive_sync = not self._config.settings.adaptive_sync
             print(f"VRR: {self._config.settings.adaptive_sync}")
+            self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
+
+    def _toggle_fullscreen(self):
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.fullscreen = not self._config.settings.fullscreen
+            print(f"Fullscreen: {self._config.settings.fullscreen}")
+            self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
+
+    def _toggle_grab_cursor(self):
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.force_grab_cursor = not self._config.settings.force_grab_cursor
+            print(f"Grab Cursor: {self._config.settings.force_grab_cursor}")
+            self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
+
+    def _toggle_autostart(self):
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.autostart = not self._config.settings.autostart
+            print(f"Autostart: {self._config.settings.autostart}")
+            self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
+
+    def _set_refresh_rate(self, hz: int):
+        print(f"Setting refresh rate: {hz} Hz")
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.refresh_rate = hz
+            self._config.save()
+            self._rebuild_menu()
+            self._menu_interface.notify_layout_update()
+
+    def _set_backend(self, backend: str):
+        print(f"Setting backend: {backend}")
+        if hasattr(self, '_config') and self._config:
+            self._config.settings.backend = backend
             self._config.save()
             self._rebuild_menu()
             self._menu_interface.notify_layout_update()

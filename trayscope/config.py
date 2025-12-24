@@ -35,9 +35,6 @@ class GamescopeSettings:
     # Extra args (appended to gamescope command)
     extra_args: str = ""
 
-    # Auto-restart on crash
-    auto_restart: bool = True
-
     # Start gamescope automatically when trayscope starts
     autostart: bool = False
 
