@@ -328,6 +328,9 @@ class StatusNotifierService:
         self._sni_interface = StatusNotifierItemInterface(self)
         self._menu_interface = DBusMenuInterface(self)
 
+        # Track gamescope running state for menu rebuilding
+        self._gamescope_running = False
+
         # Menu structure
         # id -> (label, callback, enabled, children_ids)
         # children_ids is None for leaf items, list of ids for submenus
@@ -354,38 +357,42 @@ class StatusNotifierService:
         def check(label, on):
             return f"✓ {label}" if on else f"  {label}"
 
+        # Use tracked running state for Start/Stop enabled status
+        running = self._gamescope_running
+
         # Format: (label, callback, enabled, toggle_type, toggle_state, children)
         self._menu_items = {
-            1: ("Start Gamescope", self._do_start, True, None, None, None),
-            2: ("Stop Gamescope", self._do_stop, False, None, None, None),
+            1: ("Start Gamescope", self._do_start, not running, None, None, None),
+            2: ("Stop Gamescope", self._do_stop, running, None, None, None),
             3: ("separator", None, True, None, None, None),
-            # Resolution submenu
-            10: ("Resolution", None, True, None, None, [11, 12, 13, 14]),
-            11: (mark("720p", cur_res == (1280, 720)), lambda: self._set_resolution(1280, 720), True, "radio", cur_res == (1280, 720), None),
-            12: (mark("1080p", cur_res == (1920, 1080)), lambda: self._set_resolution(1920, 1080), True, "radio", cur_res == (1920, 1080), None),
-            13: (mark("1440p", cur_res == (2560, 1440)), lambda: self._set_resolution(2560, 1440), True, "radio", cur_res == (2560, 1440), None),
-            14: (mark("4K", cur_res == (3840, 2160)), lambda: self._set_resolution(3840, 2160), True, "radio", cur_res == (3840, 2160), None),
-            # Refresh Rate submenu
-            50: ("Refresh Rate", None, True, None, None, [51, 52, 53]),
-            51: (mark("60 Hz", cur_refresh == 60), lambda: self._set_refresh_rate(60), True, "radio", cur_refresh == 60, None),
-            52: (mark("120 Hz", cur_refresh == 120), lambda: self._set_refresh_rate(120), True, "radio", cur_refresh == 120, None),
-            53: (mark("144 Hz", cur_refresh == 144), lambda: self._set_refresh_rate(144), True, "radio", cur_refresh == 144, None),
-            # Filter submenu
-            20: ("Filter", None, True, None, None, [21, 22, 23]),
-            21: (mark("FSR", cur_filter == "fsr"), lambda: self._set_filter("fsr"), True, "radio", cur_filter == "fsr", None),
-            22: (mark("Nearest", cur_filter == "nearest"), lambda: self._set_filter("nearest"), True, "radio", cur_filter == "nearest", None),
-            23: (mark("Linear", cur_filter == "linear"), lambda: self._set_filter("linear"), True, "radio", cur_filter == "linear", None),
-            # Backend submenu
-            60: ("Backend", None, True, None, None, [61, 62]),
-            61: (mark("Wayland", cur_backend == "wayland"), lambda: self._set_backend("wayland"), True, "radio", cur_backend == "wayland", None),
-            62: (mark("X11", cur_backend == "x11"), lambda: self._set_backend("x11"), True, "radio", cur_backend == "x11", None),
-            # Toggles
+            # Resolution submenu (disabled when running)
+            10: ("Resolution", None, not running, None, None, [11, 12, 13, 14]),
+            11: (mark("720p", cur_res == (1280, 720)), lambda: self._set_resolution(1280, 720), not running, "radio", cur_res == (1280, 720), None),
+            12: (mark("1080p", cur_res == (1920, 1080)), lambda: self._set_resolution(1920, 1080), not running, "radio", cur_res == (1920, 1080), None),
+            13: (mark("1440p", cur_res == (2560, 1440)), lambda: self._set_resolution(2560, 1440), not running, "radio", cur_res == (2560, 1440), None),
+            14: (mark("4K", cur_res == (3840, 2160)), lambda: self._set_resolution(3840, 2160), not running, "radio", cur_res == (3840, 2160), None),
+            # Refresh Rate submenu (disabled when running)
+            50: ("Refresh Rate", None, not running, None, None, [51, 52, 53]),
+            51: (mark("60 Hz", cur_refresh == 60), lambda: self._set_refresh_rate(60), not running, "radio", cur_refresh == 60, None),
+            52: (mark("120 Hz", cur_refresh == 120), lambda: self._set_refresh_rate(120), not running, "radio", cur_refresh == 120, None),
+            53: (mark("144 Hz", cur_refresh == 144), lambda: self._set_refresh_rate(144), not running, "radio", cur_refresh == 144, None),
+            # Filter submenu (disabled when running)
+            20: ("Filter", None, not running, None, None, [21, 22, 23]),
+            21: (mark("FSR", cur_filter == "fsr"), lambda: self._set_filter("fsr"), not running, "radio", cur_filter == "fsr", None),
+            22: (mark("Nearest", cur_filter == "nearest"), lambda: self._set_filter("nearest"), not running, "radio", cur_filter == "nearest", None),
+            23: (mark("Linear", cur_filter == "linear"), lambda: self._set_filter("linear"), not running, "radio", cur_filter == "linear", None),
+            # Backend submenu (disabled when running)
+            60: ("Backend", None, not running, None, None, [61, 62, 63]),
+            61: (mark("Automatic", cur_backend == "auto"), lambda: self._set_backend("auto"), not running, "radio", cur_backend == "auto", None),
+            62: (mark("Wayland", cur_backend == "wayland"), lambda: self._set_backend("wayland"), not running, "radio", cur_backend == "wayland", None),
+            63: (mark("X11", cur_backend == "x11"), lambda: self._set_backend("x11"), not running, "radio", cur_backend == "x11", None),
+            # Toggles (disabled when running)
             30: ("separator", None, True, None, None, None),
-            31: (check("HDR", hdr_on), self._toggle_hdr, True, "checkmark", hdr_on, None),
-            32: (check("VRR", vrr_on), self._toggle_vrr, True, "checkmark", vrr_on, None),
-            33: (check("Fullscreen", fullscreen_on), self._toggle_fullscreen, True, "checkmark", fullscreen_on, None),
-            34: (check("Grab Cursor", grab_on), self._toggle_grab_cursor, True, "checkmark", grab_on, None),
-            35: (check("Autostart", autostart_on), self._toggle_autostart, True, "checkmark", autostart_on, None),
+            31: (check("HDR", hdr_on), self._toggle_hdr, not running, "checkmark", hdr_on, None),
+            32: (check("VRR", vrr_on), self._toggle_vrr, not running, "checkmark", vrr_on, None),
+            33: (check("Fullscreen", fullscreen_on), self._toggle_fullscreen, not running, "checkmark", fullscreen_on, None),
+            34: (check("Grab Cursor", grab_on), self._toggle_grab_cursor, not running, "checkmark", grab_on, None),
+            35: (check("Autostart", autostart_on), self._toggle_autostart, not running, "checkmark", autostart_on, None),
             # Quit
             40: ("separator", None, True, None, None, None),
             41: ("Quit", self._do_quit, True, None, None, None),
@@ -425,6 +432,7 @@ class StatusNotifierService:
 
     async def set_gamescope_running(self, running: bool):
         """Update tray state based on whether gamescope is running."""
+        self._gamescope_running = running
         self._menu_items[1] = ("Start Gamescope", self._do_start, not running, None, None, None)
         self._menu_items[2] = ("Stop Gamescope", self._do_stop, running, None, None, None)
         # Keep SNI Status always "Active" so icon remains visible
@@ -458,6 +466,8 @@ class StatusNotifierService:
     def set_config(self, config):
         """Set the config object for saving settings."""
         self._config = config
+        # Rebuild menu to reflect config values (e.g., autostart state)
+        self._rebuild_menu()
 
     def _set_resolution(self, width: int, height: int):
         print(f"Setting resolution: {width}x{height}")

@@ -23,7 +23,7 @@ class GamescopeSettings:
     fullscreen: bool = True
 
     # Advanced
-    backend: str = "wayland"  # wayland, x11
+    backend: str = "auto"  # auto, wayland, x11
     force_grab_cursor: bool = True
     hdr_enabled: bool = False
     adaptive_sync: bool = False
@@ -124,7 +124,8 @@ class Config:
         else:
             args = [self.get_gamescope_path()]
 
-        args.extend([f"--backend={s.backend}"])
+        if s.backend != "auto":
+            args.extend([f"--backend={s.backend}"])
 
         if s.fullscreen:
             args.append("-f")
