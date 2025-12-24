@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trayscope"
-version = "0.1.0"
+version = "0.1.1"
 description = "System tray application for managing gamescope"
 readme = "README.md"
 license = "BSD-2-Clause"
