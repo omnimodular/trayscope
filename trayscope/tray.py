@@ -433,8 +433,8 @@ class StatusNotifierService:
     async def set_gamescope_running(self, running: bool):
         """Update tray state based on whether gamescope is running."""
         self._gamescope_running = running
-        self._menu_items[1] = ("Start Gamescope", self._do_start, not running, None, None, None)
-        self._menu_items[2] = ("Stop Gamescope", self._do_stop, running, None, None, None)
+        # Rebuild entire menu to update enabled state of all settings
+        self._rebuild_menu()
         # Keep SNI Status always "Active" so icon remains visible
         # Only update the icon color (green=running, red=stopped)
         self._sni_interface.set_gamescope_running(running)
