@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.1] - 2025-12-24
+
+### Fixed
+- Settings not graying out when gamescope starts
+
 ## [0.3.0] - 2025-12-24
 
 ### Added
