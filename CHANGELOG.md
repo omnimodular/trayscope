@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.2] - 2026-04-05
+
+### Added
+- Single instance enforcement via D-Bus name ownership
+
 ## [0.3.1] - 2025-12-24
 
 ### Fixed
