@@ -6,7 +6,7 @@ import signal
 import sys
 
 from trayscope.config import Config
-from trayscope.tray import StatusNotifierService
+from trayscope.tray import SingleInstanceError, StatusNotifierService
 from trayscope.process import GamescopeProcess
 
 
@@ -82,6 +82,9 @@ def main():
         loop.run_until_complete(app.run())
     except KeyboardInterrupt:
         pass
+    except SingleInstanceError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     finally:
         loop.close()
     return 0

@@ -9,6 +9,7 @@ Uses StatusNotifier D-Bus protocol for native Wayland support with waybar and ot
 - **System tray integration**: Start/stop gamescope from your desktop's system tray (waybar, KDE, etc.)
 - **Pure Python**: No GTK/Qt dependencies, just D-Bus
 - **Tray menu controls**: Configure resolution, refresh rate, filter, backend, and toggles directly from the tray menu
+- **Single instance**: D-Bus name ownership prevents duplicate instances
 - **Configurable**: Settings saved to `~/.config/trayscope/config.json`
 
 ## Installation

@@ -5,7 +5,11 @@ from typing import Callable, Optional
 
 from dbus_next.aio import MessageBus
 from dbus_next.service import ServiceInterface, method, dbus_property, signal, PropertyAccess
-from dbus_next import Variant, BusType
+from dbus_next import NameFlag, RequestNameReply, Variant, BusType
+
+
+class SingleInstanceError(Exception):
+    """Raised when another trayscope instance is already running."""
 
 
 def _make_crosshair_pixmap(active: bool):
@@ -403,6 +407,15 @@ class StatusNotifierService:
         """Connect to D-Bus and register interfaces."""
         self._bus = await MessageBus(bus_type=BusType.SESSION).connect()
         self._unique_name = self._bus.unique_name
+
+        # Enforce single instance via D-Bus name ownership
+        reply = await self._bus.request_name(
+            "sh.ironforge.trayscope", NameFlag.DO_NOT_QUEUE
+        )
+        if reply != RequestNameReply.PRIMARY_OWNER:
+            self._bus.disconnect()
+            self._bus = None
+            raise SingleInstanceError("Trayscope is already running")
 
         # Export interfaces
         self._bus.export("/StatusNotifierItem", self._sni_interface)
