@@ -21,7 +21,8 @@ class Trayscope:
         self.tray = StatusNotifierService(
             on_start=self.start_gamescope,
             on_stop=self.stop_gamescope,
-            on_quit=self.quit
+            on_quit=self.quit,
+            on_lost=self._on_tray_lost,
         )
 
         self.process.on_started = self._on_started
@@ -56,9 +57,19 @@ class Trayscope:
         if self.tray:
             asyncio.create_task(self.tray.set_gamescope_running(True))
 
-    def _on_stopped(self, exit_code: int):
+    def _on_stopped(self, exit_code: int, user_initiated: bool):
         if self.tray:
             asyncio.create_task(self.tray.set_gamescope_running(False))
+        # If gamescope died on its own (crash or external kill), don't linger
+        # as a headless flatpak container — exit the tray too.
+        if not user_initiated:
+            print(f"Gamescope exited unexpectedly (code {exit_code}); quitting.")
+            self.quit()
+
+    def _on_tray_lost(self):
+        # D-Bus tray attachment is gone (bus disconnect or watcher vanished).
+        # Nothing left to drive the UI, so exit.
+        self.quit()
 
     def _on_output(self, line: str):
         print(f"[gs] {line}", end="")

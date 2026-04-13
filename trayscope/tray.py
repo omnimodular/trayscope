@@ -1,5 +1,6 @@
 """StatusNotifier D-Bus implementation using dbus-next."""
 
+import asyncio
 import os
 from typing import Callable, Optional
 
@@ -321,13 +322,20 @@ class StatusNotifierService:
 
     def __init__(self, on_start: Optional[Callable] = None,
                  on_stop: Optional[Callable] = None,
-                 on_quit: Optional[Callable] = None):
+                 on_quit: Optional[Callable] = None,
+                 on_lost: Optional[Callable] = None):
         self.on_start = on_start
         self.on_stop = on_stop
         self.on_quit = on_quit
+        # Fired when the tray attachment is lost (bus disconnect or
+        # StatusNotifierWatcher vanishes after a successful registration).
+        self.on_lost = on_lost
 
         self._bus: Optional[MessageBus] = None
         self._unique_name: str = ""
+        self._registered_with_watcher = False
+        self._lost_fired = False
+        self._disconnect_watch_task: Optional[asyncio.Task] = None
 
         self._sni_interface = StatusNotifierItemInterface(self)
         self._menu_interface = DBusMenuInterface(self)
@@ -424,6 +432,15 @@ class StatusNotifierService:
         print(f"D-Bus unique name: {self._unique_name}")
 
         # Register with StatusNotifierWatcher using unique name (like Telegram does)
+        await self._register_with_watcher()
+
+        # Watch the session bus for disconnect (fatal) and the watcher's bus
+        # name for owner changes (transient — re-register when it returns).
+        self._disconnect_watch_task = asyncio.create_task(self._watch_disconnect())
+        await self._watch_watcher_owner()
+
+    async def _register_with_watcher(self):
+        """(Re-)register this SNI with the StatusNotifierWatcher."""
         try:
             introspection = await self._bus.introspect(
                 self.WATCHER_BUS, self.WATCHER_PATH
@@ -434,11 +451,69 @@ class StatusNotifierService:
             watcher = proxy.get_interface("org.kde.StatusNotifierWatcher")
             # Register with just the unique bus name - watcher adds the path
             await watcher.call_register_status_notifier_item(self._unique_name)
+            self._registered_with_watcher = True
             print("Registered with StatusNotifierWatcher")
         except Exception as e:
-            print(f"Warning: Could not register: {e}")
+            self._registered_with_watcher = False
+            print(f"Warning: Could not register with watcher: {e}")
+
+    async def _watch_disconnect(self):
+        """Fire on_lost if the session bus disconnects unexpectedly."""
+        try:
+            await self._bus.wait_for_disconnect()
+            self._fire_lost("D-Bus session bus disconnected")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self._fire_lost(f"D-Bus connection error: {e}")
+
+    async def _watch_watcher_owner(self):
+        """Re-register with the StatusNotifierWatcher whenever it (re)appears.
+
+        Tray hosts (waybar, plasmashell, swaync, …) routinely restart, which
+        briefly drops the watcher's bus name owner and then re-claims it.
+        Treating those blips as fatal would kill gamescope. Instead, re-register
+        on owner-acquired and otherwise stay alive — only a full bus disconnect
+        is fatal (handled by _watch_disconnect).
+        """
+        dbus_introspection = await self._bus.introspect(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus"
+        )
+        dbus_proxy = self._bus.get_proxy_object(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", dbus_introspection
+        )
+        dbus_iface = dbus_proxy.get_interface("org.freedesktop.DBus")
+
+        def on_name_owner_changed(name, old_owner, new_owner):
+            if name != self.WATCHER_BUS:
+                return
+            if new_owner:
+                print(f"StatusNotifierWatcher acquired by {new_owner}; re-registering")
+                asyncio.create_task(self._register_with_watcher())
+            else:
+                # Watcher gone for now; mark unregistered so we re-register
+                # when it comes back. Stay alive in the meantime.
+                self._registered_with_watcher = False
+                print("StatusNotifierWatcher vanished; awaiting return")
+
+        dbus_iface.on_name_owner_changed(on_name_owner_changed)
+
+    def _fire_lost(self, reason: str):
+        if self._lost_fired:
+            return
+        self._lost_fired = True
+        print(f"Tray attachment lost: {reason}")
+        if self.on_lost:
+            self.on_lost()
 
     async def disconnect(self):
+        if self._disconnect_watch_task and not self._disconnect_watch_task.done():
+            self._disconnect_watch_task.cancel()
+            try:
+                await self._disconnect_watch_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._disconnect_watch_task = None
         if self._bus:
             self._bus.disconnect()
             self._bus = None

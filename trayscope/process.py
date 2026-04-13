@@ -25,7 +25,8 @@ class GamescopeProcess:
 
         # Callbacks
         self.on_started: Optional[Callable[[], None]] = None
-        self.on_stopped: Optional[Callable[[int], None]] = None
+        # on_stopped(exit_code, user_initiated)
+        self.on_stopped: Optional[Callable[[int, bool], None]] = None
         self.on_output: Optional[Callable[[str], None]] = None
         self.on_ready: Optional[Callable[[], None]] = None
 
@@ -65,18 +66,21 @@ class GamescopeProcess:
 
             # Wait for process to exit
             exit_code = await self._process.wait()
+            user_initiated = self._stopping
             self._process = None
 
             self._log(f"Gamescope exited with code {exit_code}\n")
 
             if self.on_stopped:
-                self.on_stopped(exit_code)
+                self.on_stopped(exit_code, user_initiated)
 
         except Exception as e:
+            # Spawn failed — process never ran. Don't fire on_stopped: the tray
+            # state was never flipped to "running", and exiting the whole tray
+            # over a misconfigured command would deny the user a chance to fix
+            # settings and retry. Just log.
             self._log(f"Failed to start gamescope: {e}\n")
             self._process = None
-            if self.on_stopped:
-                self.on_stopped(-1)
 
     async def stop(self):
         """Stop gamescope gracefully."""
