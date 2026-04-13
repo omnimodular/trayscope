@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3] - 2026-04-13
+
+### Fixed
+- Tray process lingering after gamescope crashed or the D-Bus session bus disconnected
+- Transient StatusNotifierWatcher restarts (waybar reload, etc.) now re-register instead of treating the tray attachment as lost
+- Gamescope spawn failures (missing binary, misconfigured command) no longer exit the tray, so the user can fix settings and retry
+
 ## [0.3.2] - 2026-04-05
 
 ### Added
