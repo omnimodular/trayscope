@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.4] - 2026-04-13
+
+### Fixed
+- Closing the gamescope window (or any non-Stop exit) no longer takes the tray down with it; trayscope stays alive on the host session bus so the user can recover from the tray
+- Gamescope sessions are now auto-restarted on unexpected exits (window close, crash, external kill), with a 3s minimum-uptime crash-loop guard; an explicit Stop from the tray menu always wins
+
 ## [0.3.3] - 2026-04-13
 
 ### Fixed
