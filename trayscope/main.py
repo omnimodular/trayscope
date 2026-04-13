@@ -4,6 +4,8 @@
 import asyncio
 import signal
 import sys
+import time
+from typing import Optional
 
 from trayscope.config import Config
 from trayscope.tray import SingleInstanceError, StatusNotifierService
@@ -11,11 +13,20 @@ from trayscope.process import GamescopeProcess
 
 
 class Trayscope:
+    # Don't auto-restart gamescope if it exits this quickly after starting —
+    # avoids a tight loop when the launch command is misconfigured or the
+    # environment is broken in a way that kills gamescope at startup.
+    MIN_UPTIME_FOR_AUTO_RESTART = 3.0
+
     def __init__(self):
         self.config = Config()
         self.process = GamescopeProcess(self.config)
         self.tray = None
         self._running = True
+        self._gamescope_start_time: Optional[float] = None
+        # Session intent: True between Start (user or autostart) and an
+        # explicit Stop. Drives auto-restart on unexpected gamescope exits.
+        self._session_active = False
 
     async def run(self):
         self.tray = StatusNotifierService(
@@ -44,27 +55,52 @@ class Trayscope:
 
     def start_gamescope(self):
         if not self.process.is_running:
+            self._session_active = True
             asyncio.create_task(self.process.start())
 
     def stop_gamescope(self):
         if self.process.is_running:
+            self._session_active = False
             asyncio.create_task(self.process.stop())
 
     def quit(self):
         self._running = False
 
     def _on_started(self):
+        self._gamescope_start_time = time.monotonic()
         if self.tray:
             asyncio.create_task(self.tray.set_gamescope_running(True))
 
     def _on_stopped(self, exit_code: int, user_initiated: bool):
         if self.tray:
             asyncio.create_task(self.tray.set_gamescope_running(False))
-        # If gamescope died on its own (crash or external kill), don't linger
-        # as a headless flatpak container — exit the tray too.
-        if not user_initiated:
-            print(f"Gamescope exited unexpectedly (code {exit_code}); quitting.")
-            self.quit()
+        if user_initiated:
+            # Explicit Stop via the tray menu — keep gamescope stopped.
+            return
+        if not self._session_active:
+            # No active session (e.g., Stop was already requested, or the
+            # process exited before a session was ever established).
+            print(f"Gamescope exited on its own (code {exit_code}); tray staying alive.")
+            return
+        # Unexpected exit during an active session (window closed, crash,
+        # external kill). Auto-restart so the session persists until the
+        # user explicitly stops it. Crash-loop guard: skip if uptime was
+        # too short — a misconfigured launch shouldn't spin forever.
+        started = self._gamescope_start_time
+        ran_for = (time.monotonic() - started) if started is not None else 0.0
+        if ran_for < self.MIN_UPTIME_FOR_AUTO_RESTART:
+            self._session_active = False
+            print(
+                f"Gamescope exited after {ran_for:.1f}s (code {exit_code}); "
+                f"not auto-restarting (ran <{self.MIN_UPTIME_FOR_AUTO_RESTART}s, "
+                f"avoiding tight loop)."
+            )
+            return
+        print(
+            f"Gamescope exited after {ran_for:.1f}s (code {exit_code}); "
+            f"auto-restarting."
+        )
+        self.start_gamescope()
 
     def _on_tray_lost(self):
         # D-Bus tray attachment is gone (bus disconnect or watcher vanished).
